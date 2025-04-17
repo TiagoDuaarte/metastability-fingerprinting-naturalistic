@@ -1,5 +1,4 @@
 
-
 # List of movie names linked to numbers
 movie_names <- list(
   "1" = "500_Days_of_Summer",
@@ -15,31 +14,35 @@ movie_names <- list(
 )
 
 # Choose the movie number
-movie_number <- "3"  # Change this number to switch the movie
+movie_number <- "10"  # Change this number to switch the movie
 movie_name <- movie_names[[movie_number]]
 
-# Set every measure into a different and specific folder
-
-setwd(paste0("~/Desktop/Filmes - Atlases/export/Gordon/", movie_name, "/PARCELATTION_DATA_REORGANIZED/"))
-
-iself_path <- paste0("~/Desktop/Filmes - Atlases/export/Gordon/", movie_name, "/ISELF/")
-iothers_path <- paste0("~/Desktop/Filmes - Atlases/export/Gordon/", movie_name, "/IOTHERS/")
-metastability_path <- paste0("~/Desktop/Filmes - Atlases/export/Gordon/", movie_name, "/METASTABILITY/")
-final_path <- paste0("~/Desktop/Filmes - Atlases/export/Gordon/", movie_name, "/ORGANIZED_DATA/")
-reference_file = read.csv("Subject082 - 12_Years_A_Slave - Atlas (333 ROIs) Gordon.csv")
-
-number_of_subjects = ncol(reference_file)
-
 # Set the windows that mus be considered
-windows <- c("60","120","180","240", "300", "360", "420", "480", "540", "600")
+windows <- c("60", "120", "180", "240", "300", "360", "420", "480", "540", "600")
+
+networks_to_run <- c("DMN", "MOTOR", "VISUAL", "FPN", "AUDITORY", "AMN", "VENTRAL_ATTN", "DORSAL_ATTN")
+
+for(network_name in networks_to_run){
+  
+  base_path = paste0("~/Desktop/Filmes - Atlases/export/Gordon/", movie_name, "/NETWORKS/", network_name, "/")
+  setwd(base_path)
+  
+  
+  iself_path <- paste0(base_path)
+  iothers_path <- paste0(base_path)
+  metastability_path <- paste0(base_path)
+  dir.create(file.path(dirname(base_path), "ORGANIZED_DATA"), showWarnings = FALSE)
+  final_path <- paste0(dirname(base_path),"/ORGANIZED_DATA/")
+  
+  cat("Network running:", network_name, "\n")
 
 #Organize data for all windows
 for (w in windows) {
   
   # Set name files based on window size
-  iself_file <- paste0(iself_path, "Iself_", movie_name, "_WINDOW_SIZE_", w, "_seconds.csv")
-  iothers_file <- paste0(iothers_path, "Iothers_", movie_name, "_WINDOW_SIZE_", w, "_seconds.csv")
-  metastability_file <- paste0(metastability_path, "Metastability_", movie_name,"_Gordon_", w, "_Window_Size.csv")
+  iself_file <- paste0(iself_path, "_Iself_", network_name, "_", movie_name, "_WINDOW_SIZE_", w, "_seconds.csv")
+  iothers_file <- paste0(iothers_path, "_Iothers_", network_name, "_", movie_name, "_WINDOW_SIZE_", w, "_seconds.csv")
+  metastability_file <- paste0(metastability_path, "Metastability_", movie_name, "_", network_name, "_", w, "_Window_Size.csv")
   
   # Read the csv. files
   iself <- read.csv(iself_file)
@@ -50,8 +53,8 @@ for (w in windows) {
   metastability[is.na(metastability)] = 0
   
   # Get the number of subjects and windows
-  num_subjects <- ncol(iself)
-  num_windows <- nrow(iself)
+  num_subjects <- nrow(iself)
+  num_windows <- ncol(iself)
   
   # Create subject and windows columns
   # Also, if make sense to your data, a movie category column
@@ -61,7 +64,7 @@ for (w in windows) {
   
   #In this dataset, I had 10 movies with different sample sizes
   movie <- c(rep(movie_number, times = num_windows*num_subjects))
-
+  
   # Transform into vectors
   iself <- as.vector(t(iself))
   iother <- as.vector(t(iother))
@@ -83,9 +86,11 @@ for (w in windows) {
   length(movie)
   
   # Define output name
-  sheet_csv <- paste0(final_path, "12_Years_A_Slave_", w, "_SECONDS_WINDOW.csv")
+  sheet_csv <- paste0(final_path, network_name, "_", movie_name, "_", w, "_SECONDS_WINDOW.csv")
   
   # Save a csv file
   write.table(long_format_data, file = sheet_csv, row.names = FALSE, dec = ".", sep = ",", quote = FALSE)
+
 }
+  }
 
