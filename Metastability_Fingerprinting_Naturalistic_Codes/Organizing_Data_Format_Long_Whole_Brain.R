@@ -83,7 +83,7 @@ for (w in windows) {
   length(movie)
   
   # Define output name
-  sheet_csv <- paste0(final_path, "12_Years_A_Slave_", w, "_SECONDS_WINDOW.csv")
+  sheet_csv <- paste0(final_path, movie_name, w, "_SECONDS_WINDOW.csv")
   
   # Save a csv file
   write.table(long_format_data, file = sheet_csv, row.names = FALSE, dec = ".", sep = ",", quote = FALSE)
