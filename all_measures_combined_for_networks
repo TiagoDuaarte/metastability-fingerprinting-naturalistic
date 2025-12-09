@@ -1,0 +1,169 @@
+#This code combines the scripts for the three measures (Iself, Iothers, and Metastability) into a single workflow, focusing on one large-scale functional network at a time.
+#The code expects a list/array with dimensions (Subjects × ROIs × TRs).
+#The networks are based on the alphabetically reordered version of the Gordon atlas networks, so make sure to arrange the columns of your matrix accordingly, or update the column indices associated with each network.
+#The code runs for only one network, which must be specified as a parameter; to run all networks, create a loop iterating over them.
+
+
+all_measures_dataframe_networks = function(list_of_subject_dataframes, network = "WHOLE_BRAIN", window_size = nrow(list_of_subject_dataframes[[1]])){
+
+  select_network = function(dataframe, network = "WHOLE_BRAIN"){
+
+    network_ranges <- list(
+      "AUD"              = 1:24,   # AUDITORY
+      "AMN"              = 25:64,  # ACTION-MODE NETWORK
+      "CNP"              = 65:69,  # CINGULO PARIETAL
+      "DMN"              = 70:110, # DEFAULT MODE NETWORK
+      "DAN"              = 111:142, # DORSAL ATTENTIONAL NETWORK
+      "FPN"              = 143:166, # FRONTOPARIETAL NETWORK
+      "NONE"             = 167:213, # NONE
+      "RNS"              = 214:221, # RETROSPLENIAL
+      "SN"               = 222:225, # SALIENCE
+      "MN"               = 226:271, # MOTOR NETWORK
+      "VAN"              = 272:294, # VENTRAL ATTENTIONAL NETWORK
+      "VIS"              = 295:333, # VISUAL NETWORK
+      "WHOLE_BRAIN"      = 1:333
+    )
+
+    return(dataframe[, network_ranges[[network]], drop = FALSE])
+  }
+
+  list_of_subject_dataframes = lapply(list_of_subject_dataframes, select_network)
+
+  all_subjects_dynamics_dataframe = do.call(rbind, lapply(list_of_subject_dataframes, all_brain_dynamics_measures, window_size = nrow(list_of_subject_dataframes[[1]])))
+
+  all_subjects_dynamics_dataframe = all_subjects_dynamics_dataframe[order(all_subjects_dynamics_dataframe$Windows),]
+
+  # Check for dimension disparities and standardize by the smallest value
+  min_rows <- min(sapply(list_of_subject_dataframes, nrow))
+  min_cols <- min(sapply(list_of_subject_dataframes, ncol))
+
+  # Transform the list into a 3-dimensional array
+  subjects_array <- array(
+    data = unlist(lapply(list_of_subject_dataframes, function(x) x[1:min_rows, 1:min_cols])),
+    dim  = c(min_rows, min_cols, length(list_of_subject_dataframes))
+  )
+
+  number_of_windows <- floor(nrow(subjects_array) / window_size)
+
+  # Initialize variables
+
+  start = 1
+  middle = floor(window_size / 2)
+  end = window_size
+  fingerprinting = 0
+
+  # Create necessary dataframes
+
+  first_half_list_of_FC_matrices = array(dim = c(dim(subjects_array)[2], dim(subjects_array)[2], dim(subjects_array)[3]))
+
+  second_half_list_of_FC_matrices = array(dim = c(dim(subjects_array)[2], dim(subjects_array)[2], dim(subjects_array)[3]))
+
+  vectorized_first_half_matrix = vector("list", dim(subjects_array)[3])
+
+  vectorized_second_half_matrix = vector("list", dim(subjects_array)[3])
+
+  id_matrix = array(dim = c(dim(subjects_array)[3], ncol = dim(subjects_array)[3], number_of_windows))
+
+  for (win in 1:number_of_windows) {
+    for (i in 1:dim(subjects_array)[3]) {
+
+      # First Functional Connectivity
+
+      first_half_list_of_FC_matrices[,,i] = cor(scale(subjects_array[,,i][start:middle, ]))
+
+      # Second Functional Connectivity
+
+      second_half_list_of_FC_matrices[,,i] = cor(scale(subjects_array[,,i][middle:end, ]))
+
+      # Vectorize entire 1st Functional Connectivity
+
+      vectorized_first_half_matrix[[i]] = as.vector(first_half_list_of_FC_matrices[,,i])
+
+      # Vectorize entire 2nd Functional Connectivity
+
+      vectorized_second_half_matrix[[i]] = as.vector(second_half_list_of_FC_matrices[,,i])
+
+    }
+
+    for (i in 1:dim(subjects_array)[3]) {
+      for (j in 1:dim(subjects_array)[3]) {
+        id_matrix[i, j, win] = cor(vectorized_first_half_matrix[[i]], vectorized_second_half_matrix[[j]])
+      }
+    }
+
+    var_name <- paste0("Plot Window #", win, " | ", start, " - ", end, " (TRs)")
+
+    corrplot::corrplot(
+      id_matrix[,,win],
+      method = "shade",
+      is.corr = FALSE,
+      diag = TRUE,
+      col = colorRampPalette(c("cyan", "white", "firebrick"))(200),
+      title = var_name,
+      mar = c(0, 0, 2, 0)   # Increase top margin so title fits well
+    )
+
+    start = start + window_size
+    middle = middle + window_size
+    end = end + window_size
+    fingerprinting = 0
+
+  }
+
+  # Fingerprinting Function
+
+  fingerprint_final = c()
+
+  for(win in 1:dim(id_matrix)[3]){
+
+    fingerprint_final[win] = ((sum(diag(id_matrix[,,win]) == apply(id_matrix[,,win], 1, max)))/dim(id_matrix)[2])*100
+
+  }
+
+  # Iself Function
+
+  Iself = matrix(ncol = dim(id_matrix)[3], nrow = dim(id_matrix)[2])
+
+  for (win in 1:dim(id_matrix)[3]) {
+    for(i in 1:dim(id_matrix)[2]){
+
+      Iself[i, win] = id_matrix[i, i, win]
+
+    }
+  }
+
+  # Iothers Function
+  
+  Iothers = matrix(ncol = dim(id_matrix)[3], nrow = dim(id_matrix)[2])
+
+  for (win in 1:dim(id_matrix)[3]) {
+    for(i in 1:dim(id_matrix)[2]){
+
+      row_without_iself = sum(id_matrix[i, , win]) - id_matrix[i, i, win]
+      column_without_iself = sum(id_matrix[, i, win]) - id_matrix[i, i, win]
+      Iothers[i, win] = (row_without_iself + column_without_iself) / (2 * (dim(id_matrix)[2] - 1))
+
+    }
+  }
+
+  # Set Dataframe
+
+  Final_Dataframe <- data.frame(
+    Subjects       = rep(1:dim(id_matrix)[2], times = dim(id_matrix)[3]),
+    Fingerprinting = as.vector(fingerprint_final),
+    Iself          = as.vector(Iself),
+    Iothers        = as.vector(Iothers),
+    Windows        = rep(1:dim(id_matrix)[3], each = dim(id_matrix)[2])
+  )
+
+  if (network != "WHOLE_BRAIN") {
+    Final_Dataframe$Network = rep(network, times = dim(id_matrix)[3] * dim(id_matrix)[2])
+  }
+
+  all_measures = cbind(Final_Dataframe, all_subjects_dynamics_dataframe)
+
+  all_measures = all_measures[, !duplicated(names(all_measures))]
+
+  return(all_measures)
+
+}
