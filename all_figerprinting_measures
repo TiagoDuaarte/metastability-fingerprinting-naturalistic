@@ -1,0 +1,109 @@
+all_fingerprinting_measures = function(subjects_array, window_size = dim(subjects_array)[1]){
+
+  number_of_windows <- floor(nrow(subjects_array) / window_size)
+  
+  # Initialize variables
+  
+  start = 1
+  middle = floor(window_size / 2)
+  end = window_size
+  fingerprinting = 0
+
+  # Create necessary dataframes
+  
+  first_half_list_of_FC_matrices = array(dim = c(dim(subjects_array)[2], dim(subjects_array)[2], dim(subjects_array)[3]))
+  
+  second_half_list_of_FC_matrices = array(dim = c(dim(subjects_array)[2], dim(subjects_array)[2], dim(subjects_array)[3]))
+  
+  vectorized_first_half_matrix = vector("list", dim(subjects_array)[3])
+  
+  vectorized_second_half_matrix = vector("list", dim(subjects_array)[3])
+  
+  id_matrix = array(dim = c(dim(subjects_array)[3], ncol = dim(subjects_array)[3], number_of_windows))
+  
+  for (win in 1:number_of_windows) {
+    for (i in 1:dim(subjects_array)[3]) {
+      
+      # First Functional Connectivity
+      
+      first_half_list_of_FC_matrices[,,i] = cor(scale(subjects_array[,,i][start:middle, ]))
+      
+      # Second Functional Connectivity
+      
+      second_half_list_of_FC_matrices[,,i] = cor(scale(subjects_array[,,i][middle:end, ]))
+      
+      # Vectorize entire 1st Functional Connectivity
+      
+      vectorized_first_half_matrix[[i]] = as.vector(first_half_list_of_FC_matrices[,,i])
+      
+      # Vectorize entire 2nd Functional Connectivity
+      
+      vectorized_second_half_matrix[[i]] = as.vector(second_half_list_of_FC_matrices[,,i])
+      
+    }
+    
+    for (i in 1:dim(subjects_array)[3]) {
+      for (j in 1:dim(subjects_array)[3]) {
+        id_matrix[i, j, win] = cor(vectorized_first_half_matrix[[i]], vectorized_second_half_matrix[[j]])
+      }
+    }
+    
+    corrplot(id_matrix[,,win], method = "shade", is.corr = FALSE, diag = TRUE,
+             col = colorRampPalette(c("cyan", "white", "firebrick"))(200))
+    
+    start = start + window_size
+    middle = middle + window_size
+    end = end + window_size
+    fingerprinting = 0
+
+  }
+  
+  # Fingerprinting Function
+  
+  fingerprint_final = c()
+  
+  for(win in 1:dim(id_matrix)[3]){
+    
+    fingerprint_final[win] = ((sum(diag(id_matrix[,,win]) == apply(id_matrix[,,win], 1, max)))/dim(id_matrix)[2])*100
+    
+  }
+    
+  # Iself Function  
+    
+  Iself = matrix(ncol = dim(id_matrix)[3], nrow = dim(id_matrix)[2])
+  
+  for (win in 1:dim(id_matrix)[3]) {
+    for(i in 1:dim(id_matrix)[2]){
+      
+      Iself[i, win] = id_matrix[i,i,win]
+      
+    }
+  }
+   
+  # Iothers Function
+  
+  Iothers = matrix(ncol = dim(id_matrix)[3], nrow = dim(id_matrix)[2])
+  
+  for (win in 1:dim(id_matrix)[3]) {
+    for(i in 1:dim(id_matrix)[2]){
+      
+      row_without_iself = sum(id_matrix[i, , win]) - id_matrix[i, i, win]
+      column_without_iself = sum(id_matrix[, i, win]) - id_matrix[i, i, win]
+      Iothers[i, win] = (row_without_iself + column_without_iself) / (2 * (dim(id_matrix)[2] - 1))
+      
+    }
+  }
+    
+  # Set Dataframe
+  
+  Final_Dataframe <- data.frame(
+    Subjects       = rep(1:dim(id_matrix)[2], times = dim(id_matrix)[3]),
+    Fingerprinting = as.vector(fingerprint_final), 
+    Iself          = as.vector(Iself),
+    Iothers        = as.vector(Iothers),
+    Windows        = rep(1:dim(id_matrix)[3], each = dim(id_matrix)[2])
+  )
+
+  return(Final_Dataframe)
+  
+}
