@@ -1,0 +1,116 @@
+#This function was designed to work on a matrix (TR by ROIs) from a single subject.
+#It also includes additional measures that were not used in the original paper, such as Synchrony and asymmetry metrics.
+#Keep the parameters at their default values if your only interest is in metastability.
+
+
+all_brain_dynamics_measures = function(gordon_matrix, window_size = nrow(gordon_matrix), TR = 2.6, Lag = 1){
+  
+  # Initially checks if there are missing values in the dataframe and removes them
+  # Missing values will not allow the calculation to occur
+
+  gordon_matrix = gordon_matrix[ , 
+    !(names(gordon_matrix) %in% names(gordon_matrix)[colSums(gordon_matrix == 0, na.rm = TRUE) == nrow(gordon_matrix)]) &
+      colSums(is.na(gordon_matrix)) == 0
+  ]  
+    
+  # Initialize variables
+  mean_fmri = c()
+  diff_fmri = matrix(nrow = nrow(gordon_matrix), ncol = ncol(gordon_matrix))
+  V = c()
+  
+  # Calculate the mean per row
+  for (m in 1:nrow(gordon_matrix)) {
+    mean_fmri[m] <- mean(as.numeric(gordon_matrix[m,]))
+  }
+  
+  # Calculate the difference between the value of a ROI minus the mean of all ROIs
+  # Do this for all ROIs in all rows
+
+  for (i in 1:nrow(gordon_matrix)) {
+    for (j in 1:ncol(gordon_matrix)) {
+      diff_fmri[i, j] <- abs(gordon_matrix[i, j] - mean_fmri[i])
+    }
+    
+    # Sum the difference of each row
+    V[i] <- sum(diff_fmri[i, ])
+  }
+  
+  # Divide by the number of regions
+  V <- V / ncol(gordon_matrix)
+  
+  # Metastability calculation function
+  
+  V <- as.data.frame(V)
+  
+  number_of_windows <- floor(nrow(V) / window_size)
+  
+  metastability <- matrix(NA, nrow = number_of_windows, ncol = ncol(V))
+  
+  for (v in 1:ncol(V)) {
+    start <- 1
+    end   <- window_size
+    for (t in 1:number_of_windows) {
+      window_data <- V[start:end, v]
+      metastability[t, v] <- sd(window_data, na.rm = TRUE)
+      start <- start + window_size
+      end   <- end   + window_size
+    }
+  }
+  
+  # Synchrony calculation function
+  
+  synchrony <- matrix(NA, nrow = number_of_windows, ncol = ncol(V))
+  
+  for (v in 1:ncol(V)) {
+    start <- 1
+    end   <- window_size
+    for (t in 1:number_of_windows) {
+      window_data <- V[start:end, v]
+      synchrony[t, v] <- 1 / mean(window_data, na.rm = TRUE)
+      start <- start + window_size
+      end   <- end   + window_size
+    }
+  }
+  
+  # Asymmetry calculation function
+  
+  Tau = Lag * TR 
+
+  asymmetry_distance <- c()
+  
+  start <- 1
+  end <- window_size
+  
+  for (t in 1:number_of_windows) {
+    ######## Separator for organization ######
+    
+    subject_forward <- as.data.frame(scale(gordon_matrix[start:end, ]))
+    subject_reversed <- subject_forward[nrow(subject_forward):1, ]
+    
+    lagged_corr_forward <- cor(subject_forward[1:(nrow(subject_forward) - Tau), ], subject_forward[(Tau + 1):nrow(subject_forward), ])
+    
+    lagged_corr_reversed <- cor(subject_reversed[1:(nrow(subject_reversed) - Tau), ], subject_reversed[(Tau + 1):nrow(subject_reversed), ])
+    
+    FS_forward = -1/2 * log(1 - lagged_corr_forward^2)
+    FS_reversed = -1/2 * log(1 - lagged_corr_reversed^2)
+    
+    asymmetry_matrix = FS_forward - FS_reversed
+    
+    asymmetry_difference = sum(asymmetry_matrix^2)
+    
+    asymmetry_distance[t] = asymmetry_difference
+    
+    start <- start + window_size
+    end <- end + window_size
+  }
+  
+  
+  meta_and_sync_dataframe = data.frame(
+    Metastability = as.vector(metastability),
+    Synchrony = as.vector(synchrony),
+    Asymmetry_Distance = as.vector(asymmetry_distance),
+    Windows = rep(1:number_of_windows))
+  
+  return(meta_and_sync_dataframe)
+  
+}
